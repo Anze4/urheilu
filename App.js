@@ -183,12 +183,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textAlign: "center",
   },
-  subtitle: {
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 20,
-    color: "#555",
-  },
   searchRow: {
     flexDirection: "row",
     gap: 10,
@@ -221,19 +215,6 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     textAlign: "center",
   },
-  teamBox: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    alignItems: "center",
-  },
-  badge: {
-    width: 80,
-    height: 80,
-    resizeMode: "contain",
-    marginBottom: 10,
-  },
   teamName: {
     fontSize: 22,
     fontWeight: "700",
@@ -251,12 +232,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     marginBottom: 12,
-  },
-  card: {
-    backgroundColor: "white",
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 10,
   },
   eventTitle: {
     fontSize: 16,
