@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
 import {
   View,
   Text,
@@ -7,240 +6,400 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   FlatList,
-  StyleSheet,
   ScrollView,
   Image,
 } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { tyylit } from "./tyylit";
 
-const API_KEY = "123";
-const BASE_URL = `https://www.thesportsdb.com/api/v1/json/${API_KEY}`;
+const API_AVAIN = "123";
+const PERUS_URL = `https://www.thesportsdb.com/api/v1/json/${API_AVAIN}`;
+const KAUSI = "2025-2026";
 
 export default function App() {
-  const [search, setSearch] = useState("");
-  const [team, setTeam] = useState(null);
-  const [lastEvents, setLastEvents] = useState([]);
-  const [nextEvents, setNextEvents] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [haku, asetaHaku] = useState("");
+  const [joukkue, asetaJoukkue] = useState(null);
+  const [viimeisetOttelut, asetaViimeisetOttelut] = useState([]);
+  const [tulevatOttelut, asetaTulevatOttelut] = useState([]);
+  const [sarjataulukko, asetaSarjataulukko] = useState([]);
+  const [pelaajat, asetaPelaajat] = useState([]);
+  const [valittuPelaaja, asetaValittuPelaaja] = useState(null);
+  const [ladataan, asetaLadataan] = useState(false);
+  const [virhe, asetaVirhe] = useState("");
 
-  const searchTeam = async () => {
-    if (!search.trim()) {
-      setError("Kirjoita joukkueen nimi.");
-      return;
-    }
-
+  const lataaJoukkueenTiedot = async (joukkueNimi) => {
     try {
-      setLoading(true);
-      setError("");
-      setTeam(null);
-      setLastEvents([]);
-      setNextEvents([]);
+      asetaLadataan(true);
+      asetaVirhe("");
+      asetaValittuPelaaja(null);
+      asetaViimeisetOttelut([]);
+      asetaTulevatOttelut([]);
+      asetaSarjataulukko([]);
+      asetaPelaajat([]);
 
-      // 1. Haetaan joukkue
-      const teamResponse = await fetch(
-        `${BASE_URL}/searchteams.php?t=${encodeURIComponent(search)}`
+      const joukkueVastaus = await fetch(
+        `${PERUS_URL}/searchteams.php?t=${encodeURIComponent(joukkueNimi)}`
       );
-      const teamData = await teamResponse.json();
+      const joukkueData = await joukkueVastaus.json();
 
-      if (!teamData.teams || teamData.teams.length === 0) {
-        setError("Joukkuetta ei löytynyt.");
-        setLoading(false);
+      if (!joukkueData.teams || joukkueData.teams.length === 0) {
+        asetaVirhe("Joukkuetta ei löytynyt.");
         return;
       }
 
-      const foundTeam = teamData.teams[0];
-      setTeam(foundTeam);
+      const loydettyJoukkue = joukkueData.teams[0];
+      asetaJoukkue(loydettyJoukkue);
+      asetaHaku(loydettyJoukkue.strTeam);
 
-      // 2. Haetaan viimeisimmät ottelut
-      const lastResponse = await fetch(
-        `${BASE_URL}/eventslast.php?id=${foundTeam.idTeam}`
+      const viimeisetVastaus = await fetch(
+        `${PERUS_URL}/eventslast.php?id=${loydettyJoukkue.idTeam}`
       );
-      const lastData = await lastResponse.json();
+      const viimeisetData = await viimeisetVastaus.json();
 
-      // 3. Haetaan tulevat ottelut
-      const nextResponse = await fetch(
-        `${BASE_URL}/eventsnext.php?id=${foundTeam.idTeam}`
+      const tulevatVastaus = await fetch(
+        `${PERUS_URL}/eventsnext.php?id=${loydettyJoukkue.idTeam}`
       );
-      const nextData = await nextResponse.json();
+      const tulevatData = await tulevatVastaus.json();
 
-      setLastEvents(lastData.results || []);
-      setNextEvents(nextData.events || []);
-    } catch (err) {
-      setError("Datan hakemisessa tapahtui virhe.");
+      asetaViimeisetOttelut((viimeisetData.results || []).slice(0, 10));
+      asetaTulevatOttelut((tulevatData.events || []).slice(0, 10));
+
+      if (loydettyJoukkue.idLeague) {
+        const taulukkoVastaus = await fetch(
+          `${PERUS_URL}/lookuptable.php?l=${loydettyJoukkue.idLeague}&s=${KAUSI}`
+        );
+        const taulukkoData = await taulukkoVastaus.json();
+        asetaSarjataulukko(taulukkoData.table || []);
+      }
+
+      const pelaajatVastaus = await fetch(
+        `${PERUS_URL}/lookup_all_players.php?id=${loydettyJoukkue.idTeam}`
+      );
+      const pelaajatData = await pelaajatVastaus.json();
+
+      asetaPelaajat(pelaajatData.player || []);
+    } catch (e) {
+      console.log(e);
+      asetaVirhe("Datan hakemisessa tapahtui virhe.");
     } finally {
-      setLoading(false);
+      asetaLadataan(false);
     }
   };
 
-  const renderEvent = ({ item }) => {
-    const home = item.strHomeTeam || "Tuntematon";
-    const away = item.strAwayTeam || "Tuntematon";
+  const haeJoukkue = async () => {
+    if (!haku.trim()) {
+      asetaVirhe("Kirjoita joukkueen nimi.");
+      return;
+    }
 
-    const homeScore =
+    await lataaJoukkueenTiedot(haku);
+  };
+
+  const renderoiOttelu = ({ item }) => {
+    const koti = item.strHomeTeam || "Tuntematon";
+    const vieras = item.strAwayTeam || "Tuntematon";
+
+    const kotiTulos =
       item.intHomeScore !== null && item.intHomeScore !== undefined
         ? item.intHomeScore
         : "-";
 
-    const awayScore =
+    const vierasTulos =
       item.intAwayScore !== null && item.intAwayScore !== undefined
         ? item.intAwayScore
         : "-";
 
     return (
-      <View style={styles.card}>
-        <Text style={styles.eventTitle}>
-          {home} vs {away}
+      <View style={tyylit.kortti}>
+        <Text style={tyylit.otteluOtsikko}>
+          {koti} vs {vieras}
         </Text>
-        <Text style={styles.eventText}>Päivä: {item.dateEvent || "Ei tiedossa"}</Text>
-        <Text style={styles.eventText}>
-          Tulos: {homeScore} - {awayScore}
+
+        <Text style={tyylit.otteluTeksti}>
+          Päivä: {item.dateEvent || "Ei tiedossa"}
         </Text>
-        <Text style={styles.eventText}>
+
+        <Text style={tyylit.otteluTeksti}>
+          Tulos: {kotiTulos} - {vierasTulos}
+        </Text>
+
+        <Text style={tyylit.otteluTeksti}>
           Liiga: {item.strLeague || "Ei tiedossa"}
         </Text>
       </View>
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>Urheilutulokset</Text>
-        <Text style={styles.subtitle}>
-          Hae joukkueen viimeisimmät ja tulevat ottelut
+  const renderoiSarjataulukonRivi = ({ item }) => {
+    const onValittuJoukkue =
+      joukkue &&
+      item.strTeam &&
+      joukkue.strTeam &&
+      item.strTeam.toLowerCase() === joukkue.strTeam.toLowerCase();
+
+    return (
+      <TouchableOpacity
+        style={[
+          tyylit.taulukkoRivi,
+          onValittuJoukkue && tyylit.valittuJoukkueRivi,
+        ]}
+        onPress={() => lataaJoukkueenTiedot(item.strTeam)}
+      >
+        <Text style={tyylit.taulukkoSijoitus}>{item.intRank || "-"}</Text>
+
+        <Text style={tyylit.taulukkoJoukkue} numberOfLines={1}>
+          {item.strTeam || "Tuntematon"}
         </Text>
 
-        <View style={styles.searchRow}>
-          <TextInput
-            style={styles.input}
-            placeholder="Esim. Arsenal"
-            value={search}
-            onChangeText={setSearch}
+        <Text style={tyylit.taulukkoTilasto}>{item.intPlayed || "-"}</Text>
+        <Text style={tyylit.taulukkoTilasto}>{item.intWin || "-"}</Text>
+        <Text style={tyylit.taulukkoTilasto}>{item.intDraw || "-"}</Text>
+        <Text style={tyylit.taulukkoTilasto}>{item.intLoss || "-"}</Text>
+        <Text style={tyylit.taulukkoPisteet}>{item.intPoints || "-"}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderoiPelaaja = ({ item, index }) => {
+    return (
+      <TouchableOpacity
+        style={tyylit.pelaajaRivi}
+        onPress={() => asetaValittuPelaaja(item)}
+      >
+        <Text style={tyylit.pelaajaNumero}>{index + 1}.</Text>
+
+        {item.strCutout || item.strThumb ? (
+          <Image
+            source={{ uri: item.strCutout || item.strThumb }}
+            style={tyylit.pelaajaKuva}
           />
-          <TouchableOpacity style={styles.button} onPress={searchTeam}>
-            <Text style={styles.buttonText}>Hae</Text>
-          </TouchableOpacity>
+        ) : (
+          <View style={tyylit.pelaajaKuvaPaikka}>
+            <Text style={tyylit.pelaajaKuvaTeksti}>?</Text>
+          </View>
+        )}
+
+        <View style={tyylit.pelaajaTiedot}>
+          <Text style={tyylit.pelaajaNimi} numberOfLines={1}>
+            {item.strPlayer || "Tuntematon pelaaja"}
+          </Text>
+
+          <Text style={tyylit.pelaajaTeksti}>
+            Pelipaikka: {item.strPosition || "Ei tiedossa"}
+          </Text>
+
+          <Text style={tyylit.pelaajaTeksti}>
+            Kansallisuus: {item.strNationality || "Ei tiedossa"}
+          </Text>
         </View>
+      </TouchableOpacity>
+    );
+  };
 
-        {loading && <ActivityIndicator size="large" style={styles.loader} />}
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={tyylit.sailio}>
+        <ScrollView contentContainerStyle={tyylit.vieritysSisalto}>
+          <Text style={tyylit.otsikko}>Urheilutulokset</Text>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Text style={tyylit.alaotsikko}>
+            Hae joukkueen tulokset, tulevat ottelut, sarjataulukko ja kokoonpano
+          </Text>
 
-        {team && (
-          <View style={styles.teamBox}>
-            {team.strTeamBadge ? (
-              <Image source={{ uri: team.strTeamBadge }} style={styles.badge} />
-            ) : null}
-            <Text style={styles.teamName}>{team.strTeam}</Text>
-            <Text style={styles.teamInfo}>Laji: {team.strSport || "Ei tiedossa"}</Text>
-            <Text style={styles.teamInfo}>Liiga: {team.strLeague || "Ei tiedossa"}</Text>
-            <Text style={styles.teamInfo}>
-              Maa: {team.strCountry || "Ei tiedossa"}
+          <View style={tyylit.hakuRivi}>
+            <TextInput
+              style={tyylit.syote}
+              placeholder="Esim. Arsenal"
+              value={haku}
+              onChangeText={asetaHaku}
+            />
+
+            <TouchableOpacity style={tyylit.painike} onPress={haeJoukkue}>
+              <Text style={tyylit.painikeTeksti}>Hae</Text>
+            </TouchableOpacity>
+          </View>
+
+          {ladataan && <ActivityIndicator size="large" style={tyylit.lataus} />}
+
+          {virhe ? <Text style={tyylit.virhe}>{virhe}</Text> : null}
+
+          {joukkue && (
+            <View style={tyylit.joukkueLaatikko}>
+              {joukkue.strTeamBadge ? (
+                <Image
+                  source={{ uri: joukkue.strTeamBadge }}
+                  style={tyylit.joukkueLogo}
+                />
+              ) : null}
+
+              <Text style={tyylit.joukkueNimi}>{joukkue.strTeam}</Text>
+
+              <Text style={tyylit.joukkueTieto}>
+                Laji: {joukkue.strSport || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.joukkueTieto}>
+                Liiga: {joukkue.strLeague || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.joukkueTieto}>
+                Maa: {joukkue.strCountry || "Ei tiedossa"}
+              </Text>
+            </View>
+          )}
+
+          {valittuPelaaja && (
+            <View style={tyylit.profiiliKortti}>
+              {valittuPelaaja.strCutout || valittuPelaaja.strThumb ? (
+                <Image
+                  source={{
+                    uri: valittuPelaaja.strCutout || valittuPelaaja.strThumb,
+                  }}
+                  style={tyylit.profiiliKuva}
+                />
+              ) : (
+                <View style={tyylit.profiiliKuvaPaikka}>
+                  <Text style={tyylit.profiiliKuvaTeksti}>?</Text>
+                </View>
+              )}
+
+              <Text style={tyylit.profiiliNimi}>
+                {valittuPelaaja.strPlayer || "Tuntematon pelaaja"}
+              </Text>
+
+              <Text style={tyylit.profiiliTeksti}>
+                Joukkue: {valittuPelaaja.strTeam || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.profiiliTeksti}>
+                Pelipaikka: {valittuPelaaja.strPosition || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.profiiliTeksti}>
+                Kansallisuus: {valittuPelaaja.strNationality || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.profiiliTeksti}>
+                Syntymäaika: {valittuPelaaja.dateBorn || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.profiiliTeksti}>
+                Syntymäpaikka:{" "}
+                {valittuPelaaja.strBirthLocation || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.profiiliTeksti}>
+                Pituus: {valittuPelaaja.strHeight || "Ei tiedossa"}
+              </Text>
+
+              <Text style={tyylit.profiiliTeksti}>
+                Paino: {valittuPelaaja.strWeight || "Ei tiedossa"}
+              </Text>
+
+              <TouchableOpacity
+                style={tyylit.suljePainike}
+                onPress={() => asetaValittuPelaaja(null)}
+              >
+                <Text style={tyylit.suljePainikeTeksti}>Sulje profiili</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {viimeisetOttelut.length > 0 && (
+            <View style={tyylit.osio}>
+              <Text style={tyylit.osioOtsikko}>
+                Viimeisimmät ottelut ({viimeisetOttelut.length})
+              </Text>
+
+              <FlatList
+                data={viimeisetOttelut}
+                keyExtractor={(item) => item.idEvent}
+                renderItem={renderoiOttelu}
+                scrollEnabled={false}
+              />
+            </View>
+          )}
+
+          {tulevatOttelut.length > 0 && (
+            <View style={tyylit.osio}>
+              <Text style={tyylit.osioOtsikko}>
+                Tulevat ottelut ({tulevatOttelut.length})
+              </Text>
+
+              <FlatList
+                data={tulevatOttelut}
+                keyExtractor={(item) => item.idEvent}
+                renderItem={renderoiOttelu}
+                scrollEnabled={false}
+              />
+            </View>
+          )}
+
+          {sarjataulukko.length > 0 && (
+            <View style={tyylit.osio}>
+              <Text style={tyylit.osioOtsikko}>
+                Sarjataulukko {joukkue?.strLeague ? `- ${joukkue.strLeague}` : ""}
+              </Text>
+
+              <Text style={tyylit.ohjeTeksti}>
+                Paina joukkuetta avataksesi sen tiedot.
+              </Text>
+
+              <View style={tyylit.taulukkoOtsake}>
+                <Text style={tyylit.taulukkoSijoitus}>#</Text>
+                <Text style={tyylit.taulukkoJoukkue}>Joukkue</Text>
+                <Text style={tyylit.taulukkoTilasto}>O</Text>
+                <Text style={tyylit.taulukkoTilasto}>V</Text>
+                <Text style={tyylit.taulukkoTilasto}>T</Text>
+                <Text style={tyylit.taulukkoTilasto}>H</Text>
+                <Text style={tyylit.taulukkoPisteet}>P</Text>
+              </View>
+
+              <FlatList
+                data={sarjataulukko}
+                keyExtractor={(item, index) =>
+                  item.idStanding ? item.idStanding : index.toString()
+                }
+                renderItem={renderoiSarjataulukonRivi}
+                scrollEnabled={false}
+              />
+            </View>
+          )}
+
+          {pelaajat.length > 0 && (
+            <View style={tyylit.osio}>
+              <Text style={tyylit.osioOtsikko}>
+                Joukkueen kokoonpano ({pelaajat.length})
+              </Text>
+
+              <Text style={tyylit.ohjeTeksti}>
+                Paina pelaajaa nähdäksesi tarkemmat tiedot.
+              </Text>
+
+              <FlatList
+                data={pelaajat}
+                keyExtractor={(item, index) =>
+                  item.idPlayer ? item.idPlayer : index.toString()
+                }
+                renderItem={renderoiPelaaja}
+                scrollEnabled={false}
+              />
+            </View>
+          )}
+
+          {joukkue && sarjataulukko.length === 0 && !ladataan && !virhe && (
+            <Text style={tyylit.infoTeksti}>
+              Sarjataulukkoa ei löytynyt tälle sarjalle tai kaudelle.
             </Text>
-          </View>
-        )}
+          )}
 
-        {lastEvents.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Viimeisimmät ottelut</Text>
-            <FlatList
-              data={lastEvents}
-              keyExtractor={(item) => item.idEvent}
-              renderItem={renderEvent}
-              scrollEnabled={false}
-            />
-          </View>
-        )}
-
-        {nextEvents.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tulevat ottelut</Text>
-            <FlatList
-              data={nextEvents}
-              keyExtractor={(item) => item.idEvent}
-              renderItem={renderEvent}
-              scrollEnabled={false}
-            />
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+          {joukkue && pelaajat.length === 0 && !ladataan && !virhe && (
+            <Text style={tyylit.infoTeksti}>
+              Kokoonpanoa ei löytynyt tälle joukkueelle.
+            </Text>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f4f4f4",
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  searchRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 20,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 48,
-  },
-  button: {
-    backgroundColor: "#222",
-    paddingHorizontal: 18,
-    justifyContent: "center",
-    borderRadius: 8,
-  },
-  buttonText: {
-    color: "white",
-    fontWeight: "600",
-  },
-  loader: {
-    marginVertical: 20,
-  },
-  error: {
-    color: "red",
-    marginBottom: 15,
-    textAlign: "center",
-  },
-  teamName: {
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  teamInfo: {
-    fontSize: 15,
-    marginBottom: 4,
-    color: "#444",
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 12,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-  eventText: {
-    fontSize: 14,
-    color: "#444",
-    marginBottom: 2,
-  },
-});
